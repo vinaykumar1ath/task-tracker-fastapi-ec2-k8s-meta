@@ -1,0 +1,73 @@
+name: Provisioning resources on AWS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --remote --init --recursive
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-profie: task-tracker-fastapi-1
+          overwrite-aws-profile: true
+
+      - name: download Remote backend config
+        id: backend-tfvars
+        run: |
+          AWS_PROFILE='task-tracker-fastapi-1'
+          aws s3 cp s3://${{ secrets.AWS_CONFIG_BUCKET }}/${{ secrets.AWS_CONFIG_BUCKET_KEY }}/backend.auto.tfvars task-tracker-fastapi-ec2-k8s-iaac/backend.auto.tfvars
+
+      - name: download configuration variables for AWS OpenTofu
+        id: config-tfvars
+        run: |
+          AWS_PROFILE='task-tracker-fastapi-1'
+          aws s3 cp s3://${{ secrets.AWS_CONFIG_BUCKET }}/${{ secrets.AWS_CONFIG_BUCKET_KEY }}/.env.tfvars task-tracker-fastapi-ec2-k8s-iaac/.env.tfvars
+
+      - uses: opentofu/setup-opentofu@v2
+
+      - name: Initialise OpenTofu
+        run: |
+          AWS_PROFILE='task-tracker-fastapi-1'
+          cd task-tracker-fastapi-ec2-k8s-iaac
+          tofu init
+
+      - name: Provision resources on AWS
+        run: |
+          AWS_PROFILE='task-tracker-fastapi-1'
+          cd task-tracker-fastapi-ec2-k8s-iaac
+          sed -i '/profile/s/^/#/' main.tf
+          tofu apply -auto-approve -var-file=".env.tfvars"
+          bash save-tofu-output-to-s3.sh ${{ secrets.AWS_CONFIG_BUCKET }} ${{ secrets.AWS_CONFIG_BUCKET_PATH }}
+
+      - name: create ssh private key artifact
+        run: |
+          AWS_PROFILE='task-tracker-fastapi-1'
+          cd task-tracker-fastapi-ec2-k8s-iaac
+          tofu output -raw node_ssh_private_key > ssh_private_key
+
+      - name: upload ssh private key artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ssh_private_key
+          path: ./task-tracker-fastapi-ec2-k8s-iaac/ssh_private_key
+
+      - name: create public_ip artifact
+        run: |
+          AWS_PROFILE='task-tracker-fastapi-1'
+          cd task-tracker-fastapi-ec2-k8s-iaac
+          tofu output -json node_bastion_info | jq -r '.public_ip' > public_ip
+
+      - name: upload public_ip artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: public_ip
+          path: ./task-tracker-fastapi-ec2-k8s-iaac/public_ip

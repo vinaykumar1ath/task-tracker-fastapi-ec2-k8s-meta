@@ -1,0 +1,6 @@
+[submodule "task-tracker-fastapi-ec2-k8s-iaac"]
+	path = task-tracker-fastapi-ec2-k8s-iaac
+	url = https://github.com/vinaykumar1ath/task-tracker-fastapi-ec2-k8s-iaac.git
+[submodule "task-tracker-fastapi-ec2-k8s-ansible"]
+	path = task-tracker-fastapi-ec2-k8s-ansible
+	url = https://github.com/vinaykumar1ath/task-tracker-fastapi-ec2-k8s-ansible.git

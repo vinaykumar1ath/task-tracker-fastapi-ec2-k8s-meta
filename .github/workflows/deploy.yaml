@@ -1,0 +1,45 @@
+name: Deploy k8s cluster on AWS
+
+on:
+  workflow_run:
+    workflows:
+      - Provisioning resources on AWS
+    types:
+      - completed
+
+jobs:
+  deploy:
+    permissions:
+      contents: read
+      actions: read
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+
+      - uses: actions/download-artifact@v7
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: ssh_private_key
+
+      - uses: actions/download-artifact@v7
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          name: public_ip
+
+      - name: set public ip ans ssh key permissions
+        id: ssh-setup
+        run: |
+          cat ./public_ip
+          echo -n "public_ip=$(cat ./public_ip)" >> "$GITHUB_OUTPUT"
+          mkdir -p ./.ssh; chmod 700 ./.ssh; mv ssh_private_key ./.ssh/id_ed25519;
+          chmod 600 ./.ssh/id_ed25519
+
+      - name: setup config files to server
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ./.ssh/id_ed25519 ec2-user@${{ steps.ssh-setup.outputs.public_ip }} "rm -rf ./task-tracker-fastapi-ec2-k8s-ansible; git clone https://github.com/vinaykumar1ath/task-tracker-fastapi-ec2-k8s-ansible.git"
+
+      - name: provision or update the cluster and its status
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ./.ssh/id_ed25519 ec2-user@${{ steps.ssh-setup.outputs.public_ip }} "cd task-tracker-fastapi-ec2-k8s-ansible; bash execute-this.sh;"
